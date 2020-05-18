@@ -7,6 +7,8 @@
 #include <bx/debug.h>
 #include <bx/string.h>       // isPrint
 #include <bx/readerwriter.h> // WriterI
+
+#define __STDC_FORMAT_MACROS 
 #include <inttypes.h>        // PRIx*
 
 #if BX_CRT_NONE
@@ -119,7 +121,6 @@ namespace bx
 		debugPrintfVargs(_format, argList);
 		va_end(argList);
 	}
-
 #define DBG_ADDRESS "%" PRIxPTR
 
 	void debugPrintfData(const void* _data, uint32_t _size, const char* _format, ...)

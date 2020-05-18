@@ -6,7 +6,11 @@
 #ifndef BX_H_HEADER_GUARD
 #define BX_H_HEADER_GUARD
 
+#ifdef NM_PLATFORM_ORBIS
+#include <stdlib.h>
+#else
 #include <alloca.h> // alloca
+#endif
 #include <stdarg.h> // va_list
 #include <stdint.h> // uint32_t
 #include <stdlib.h> // size_t

@@ -10,7 +10,9 @@
 
 #if !BX_CRT_NONE
 #	include <stdio.h>  // remove
+#ifndef NM_PLATFORM_ORBIS
 #	include <dirent.h> // opendir
+#endif
 
 #	if BX_CRT_MSVC
 #		include <direct.h>   // _getcwd

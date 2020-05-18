@@ -210,7 +210,7 @@
 #elif defined(__GNU__)
 #	undef  BX_PLATFORM_HURD
 #	define BX_PLATFORM_HURD 1
-#elif defined(__NX__)
+#elif defined(NM_PLATFORM_SWITCH)
 # undef BX_PLATFORM_NX
 # define BX_PLATFORM_NX 1
 #endif //

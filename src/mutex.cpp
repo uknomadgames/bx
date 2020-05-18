@@ -3,6 +3,10 @@
  * License: https://github.com/bkaradzic/bx#license-bsd-2-clause
  */
 
+#if WINAPI_FAMILY == WINAPI_FAMILY_TV_TITLE
+//#fail
+#endif
+
 #include "bx_p.h"
 #include <bx/mutex.h>
 
@@ -16,7 +20,8 @@
 	|| BX_PLATFORM_IOS     \
 	|| BX_PLATFORM_OSX     \
 	|| BX_PLATFORM_PS4     \
-	|| BX_PLATFORM_RPI
+	|| BX_PLATFORM_RPI	\
+	|| NM_PLATFORM_SWITCH
 #	include <pthread.h>
 #elif  BX_PLATFORM_WINDOWS \
 	|| BX_PLATFORM_WINRT   \

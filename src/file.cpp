@@ -66,8 +66,8 @@ namespace bx
 	  || BX_PLATFORM_BSD     \
 	  || BX_PLATFORM_IOS     \
 	  || BX_PLATFORM_OSX
-#		define fseeko64 fseeko
-#		define ftello64 ftello
+#		define fseeko64 fseek
+#		define ftello64 ftell
 #	elif BX_PLATFORM_PS4
 #		define fseeko64 fseek
 #		define ftello64 ftell

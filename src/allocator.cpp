@@ -6,7 +6,12 @@
 #include "bx_p.h"
 #include <bx/allocator.h>
 
+#ifdef NM_PLATFORM_ORBIS
+#include <stdlib.h>
+#else
 #include <malloc.h>
+#endif
+
 
 #ifndef BX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT
 #	define BX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT 8
