@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2010-2020 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bx#license-bsd-2-clause
  */
 
@@ -467,7 +467,7 @@ namespace bx
 	{
 		for (int32_t ii = 0, jj = _len - 1; ii < jj; ++ii, --jj)
 		{
-			xchg(_dst[ii], _dst[jj]);
+			swap(_dst[ii], _dst[jj]);
 		}
 	}
 

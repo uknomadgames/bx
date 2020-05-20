@@ -1,18 +1,18 @@
 #
-# Copyright 2011-2018 Branimir Karadzic. All rights reserved.
+# Copyright 2011-2020 Branimir Karadzic. All rights reserved.
 # License: https://github.com/bkaradzic/bx#license-bsd-2-clause
 #
 
 GENIE=../bx/tools/bin/$(OS)/genie
 
 all:
-	$(GENIE) vs2012
-	$(GENIE) vs2013
+	$(GENIE) vs2017
 	$(GENIE) --gcc=android-arm gmake
-	$(GENIE) --gcc=android-mips gmake
+	$(GENIE) --gcc=android-arm64 gmake
 	$(GENIE) --gcc=android-x86 gmake
 	$(GENIE) --gcc=mingw-gcc gmake
 	$(GENIE) --gcc=linux-gcc gmake
+	$(GENIE) --gcc=haiku gmake
 	$(GENIE) --gcc=osx gmake
 	$(GENIE) --gcc=ios-arm gmake
 	$(GENIE) --gcc=ios-simulator gmake
@@ -27,13 +27,13 @@ android-arm-release: .build/projects/gmake-android-arm
 	make -R -C .build/projects/gmake-android-arm config=release
 android-arm: android-arm-debug android-arm-release
 
-.build/projects/gmake-android-mips:
-	$(GENIE) --gcc=android-mips gmake
-android-mips-debug: .build/projects/gmake-android-mips
-	make -R -C .build/projects/gmake-android-mips config=debug
-android-mips-release: .build/projects/gmake-android-mips
-	make -R -C .build/projects/gmake-android-mips config=release
-android-mips: android-mips-debug android-mips-release
+.build/projects/gmake-android-arm64:
+	$(GENIE) --gcc=android-arm64 gmake
+android-arm64-debug: .build/projects/gmake-android-arm64
+	make -R -C .build/projects/gmake-android-arm64 config=debug
+android-arm64-release: .build/projects/gmake-android-arm64
+	make -R -C .build/projects/gmake-android-arm64 config=release
+android-arm64: android-arm64-debug android-arm64-release
 
 .build/projects/gmake-android-x86:
 	$(GENIE) --gcc=android-x86 gmake
@@ -50,6 +50,14 @@ linux-debug64: .build/projects/gmake-linux
 linux-release64: .build/projects/gmake-linux
 	make -R -C .build/projects/gmake-linux config=release64
 linux: linux-debug64 linux-release64
+
+.build/projects/gmake-haiku:
+	$(GENIE) --gcc=haiku gmake
+haiku-debug64: .build/projects/gmake-haiku
+	make -R -C .build/projects/gmake-haiku config=debug64
+haiku-release64: .build/projects/gmake-haiku
+	make -R -C .build/projects/gmake-haiku config=release64
+haiku: haiku-debug64 haiku-release64
 
 .build/projects/gmake-mingw-gcc:
 	$(GENIE) --gcc=mingw-gcc gmake
@@ -75,11 +83,8 @@ mingw-clang-release64: .build/projects/gmake-mingw-clang
 	make -R -C .build/projects/gmake-mingw-clang config=release64
 mingw-clang: mingw-clang-debug32 mingw-clang-release32 mingw-clang-debug64 mingw-clang-release64
 
-.build/projects/vs2012:
-	$(GENIE) vs2012
-
-.build/projects/vs2013:
-	$(GENIE) vs2013
+.build/projects/vs2017:
+	$(GENIE) vs2017
 
 .build/projects/gmake-osx:
 	$(GENIE) --gcc=osx gmake
@@ -134,13 +139,21 @@ clean:
 SILENT ?= @
 
 UNAME := $(shell uname)
-ifeq ($(UNAME),$(filter $(UNAME),Linux GNU Darwin))
+ifeq ($(UNAME),$(filter $(UNAME),Linux GNU Darwin Haiku))
+ifeq ($(UNAME),$(filter $(UNAME),Darwin Haiku))
 ifeq ($(UNAME),$(filter $(UNAME),Darwin))
 OS=darwin
 BUILD_PROJECT_DIR=gmake-osx
 BUILD_OUTPUT_DIR=osx64_clang
 BUILD_TOOLS_CONFIG=release64
 EXE=
+else
+OS=haiku
+BUILD_PROJECT_DIR=gmake-haiku
+BUILD_OUTPUT_DIR=haiku64_gcc
+BUILD_TOOLS_CONFIG=release64
+EXE=
+endif
 else
 OS=linux
 BUILD_PROJECT_DIR=gmake-linux
@@ -169,6 +182,12 @@ tools/bin/darwin/bin2c: .build/osx64_clang/bin/bin2cRelease
 tools/bin/linux/bin2c: .build/linux64_gcc/bin/bin2cRelease
 	$(SILENT) cp $(<) $(@)
 
+.build/haiku64_gcc/bin/bin2cRelease: .build/projects/gmake-haiku
+	$(SILENT) make -C .build/projects/gmake-haiku bin2c config=$(BUILD_TOOLS_CONFIG)
+
+tools/bin/haiku/bin2c: .build/haiku64_gcc/bin/bin2cRelease
+	$(SILENT) cp $(<) $(@)
+
 .build/win64_mingw-gcc/bin/bin2cRelease.exe: .build/projects/gmake-mingw-gcc
 	$(SILENT) make -C .build/projects/gmake-mingw-gcc bin2c config=$(BUILD_TOOLS_CONFIG)
 
@@ -190,6 +209,12 @@ tools/bin/darwin/lemon: .build/osx64_clang/bin/lemonRelease
 tools/bin/linux/lemon: .build/linux64_gcc/bin/lemonRelease
 	$(SILENT) cp $(<) $(@)
 
+.build/haiku64_gcc/bin/lemonRelease: .build/projects/gmake-haiku
+	$(SILENT) make -C .build/projects/gmake-haiku lemon config=$(BUILD_TOOLS_CONFIG)
+
+tools/bin/haiku/lemon: .build/haiku64_gcc/bin/lemonRelease
+	$(SILENT) cp $(<) $(@)
+
 .build/win64_mingw-gcc/bin/lemonRelease.exe: .build/projects/gmake-mingw-gcc
 	$(SILENT) make -C .build/projects/gmake-mingw-gcc lemon config=$(BUILD_TOOLS_CONFIG)
 
@@ -203,7 +228,7 @@ lemon: tools/bin/$(OS)/lemon$(EXE) tools/bin/$(OS)/lempar.c
 
 tools: bin2c lemon
 
-dist: tools/bin/darwin/bin2c tools/bin/linux/bin2c tools/bin/windows/bin2c.exe
+dist: tools/bin/darwin/bin2c tools/bin/linux/bin2c tools/bin/windows/bin2c.exe tools/bin/haiku/bin2c
 
 .build/$(BUILD_OUTPUT_DIR)/bin/bx.testRelease$(EXE): .build/projects/$(BUILD_PROJECT_DIR)
 	$(SILENT) make -C .build/projects/$(BUILD_PROJECT_DIR) bx.test config=$(BUILD_TOOLS_CONFIG)

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2010-2020 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bx#license-bsd-2-clause
  */
 
@@ -8,9 +8,15 @@
 
 #if BX_CONFIG_SUPPORTS_THREADING
 
+#if BX_PLATFORM_WINDOWS && !BX_CRT_NONE
+#	include <bx/string.h>
+#endif
+
 #if BX_CRT_NONE
 #	include "crt0.h"
 #elif  BX_PLATFORM_ANDROID \
+	|| BX_PLATFORM_BSD     \
+	|| BX_PLATFORM_HAIKU   \
 	|| BX_PLATFORM_LINUX   \
 	|| BX_PLATFORM_IOS     \
 	|| BX_PLATFORM_OSX     \
@@ -123,18 +129,22 @@ namespace bx
 		}
 	}
 
-	void Thread::init(ThreadFn _fn, void* _userData, uint32_t _stackSize, const char* _name)
+	bool Thread::init(ThreadFn _fn, void* _userData, uint32_t _stackSize, const char* _name)
 	{
 		BX_CHECK(!m_running, "Already running!");
 
 		m_fn = _fn;
 		m_userData = _userData;
 		m_stackSize = _stackSize;
-		m_running = true;
 
 		ThreadInternal* ti = (ThreadInternal*)m_internal;
 #if BX_CRT_NONE
 		ti->m_handle = crt0::threadCreate(&ti->threadFunc, _userData, m_stackSize, _name);
+
+		if (NULL == ti->m_handle)
+		{
+			return false;
+		}
 #elif  BX_PLATFORM_WINDOWS \
 	|| BX_PLATFORM_XBOXONE
 		ti->m_handle = ::CreateThread(NULL
@@ -144,8 +154,18 @@ namespace bx
 				, 0
 				, NULL
 				);
+		if (NULL == ti->m_handle)
+		{
+			return false;
+		}
 #elif BX_PLATFORM_WINRT
 		ti->m_handle = CreateEventEx(nullptr, nullptr, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS);
+
+		if (NULL == ti->m_handle)
+		{
+			return false;
+		}
+
 		auto workItemHandler = ref new WorkItemHandler([=](IAsyncAction^)
 			{
 				m_exitCode = ti->threadFunc(this);
@@ -161,26 +181,42 @@ namespace bx
 
 		pthread_attr_t attr;
 		result = pthread_attr_init(&attr);
-		BX_CHECK(0 == result, "pthread_attr_init failed! %d", result);
+		BX_WARN(0 == result, "pthread_attr_init failed! %d", result);
+		if (0 != result)
+		{
+			return false;
+		}
 
 		if (0 != m_stackSize)
 		{
 			result = pthread_attr_setstacksize(&attr, m_stackSize);
-			BX_CHECK(0 == result, "pthread_attr_setstacksize failed! %d", result);
+			BX_WARN(0 == result, "pthread_attr_setstacksize failed! %d", result);
+
+			if (0 != result)
+			{
+				return false;
+			}
 		}
 
 		result = pthread_create(&ti->m_handle, &attr, &ti->threadFunc, this);
-		BX_CHECK(0 == result, "pthread_attr_setschedparam failed! %d", result);
+		BX_WARN(0 == result, "pthread_attr_setschedparam failed! %d", result);
+		if (0 != result)
+		{
+			return false;
+		}
 #else
 #	error "Not implemented!"
 #endif // BX_PLATFORM_
 
+		m_running = true;
 		m_sem.wait();
 
 		if (NULL != _name)
 		{
 			setThreadName(_name);
 		}
+
+		return true;
 	}
 
 	void Thread::shutdown()
@@ -241,33 +277,46 @@ namespace bx
 #	else
 		pthread_set_name_np(ti->m_handle, _name);
 #	endif // defined(__NetBSD__)
-#elif BX_PLATFORM_WINDOWS && BX_COMPILER_MSVC
-#	pragma pack(push, 8)
-		struct ThreadName
+#elif BX_PLATFORM_WINDOWS
+		// Try to use the new thread naming API from Win10 Creators update onwards if we have it
+		typedef HRESULT (WINAPI *SetThreadDescriptionProc)(HANDLE, PCWSTR);
+		SetThreadDescriptionProc SetThreadDescription = (SetThreadDescriptionProc)(GetProcAddress(GetModuleHandleA("Kernel32.dll"), "SetThreadDescription"));
+		if (SetThreadDescription)
 		{
-			DWORD  type;
-			LPCSTR name;
-			DWORD  id;
-			DWORD  flags;
-		};
-#	pragma pack(pop)
-		ThreadName tn;
-		tn.type  = 0x1000;
-		tn.name  = _name;
-		tn.id    = ti->m_threadId;
-		tn.flags = 0;
+			uint32_t length = (uint32_t)bx::strLen(_name)+1;
+			uint32_t size = length*sizeof(wchar_t);
+			wchar_t* name = (wchar_t*)alloca(size);
+			mbstowcs(name, _name, size-2);
+			SetThreadDescription(ti->m_handle, name);
+		}
+#	if BX_COMPILER_MSVC
+#		pragma pack(push, 8)
+			struct ThreadName
+			{
+				DWORD  type;
+				LPCSTR name;
+				DWORD  id;
+				DWORD  flags;
+			};
+#		pragma pack(pop)
+			ThreadName tn;
+			tn.type  = 0x1000;
+			tn.name  = _name;
+			tn.id    = ti->m_threadId;
+			tn.flags = 0;
 
-		__try
-		{
-			RaiseException(0x406d1388
-					, 0
-					, sizeof(tn)/4
-					, reinterpret_cast<ULONG_PTR*>(&tn)
-					);
-		}
-		__except(EXCEPTION_EXECUTE_HANDLER)
-		{
-		}
+			__try
+			{
+				RaiseException(0x406d1388
+						, 0
+						, sizeof(tn)/4
+						, reinterpret_cast<ULONG_PTR*>(&tn)
+						);
+			}
+			__except(EXCEPTION_EXECUTE_HANDLER)
+			{
+			}
+#	endif // BX_COMPILER_MSVC
 #else
 		BX_UNUSED(_name);
 #endif // BX_PLATFORM_

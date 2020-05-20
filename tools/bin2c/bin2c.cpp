@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2020 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bx#license-bsd-2-clause
  */
 
@@ -8,6 +8,8 @@
 #include <bx/file.h>
 #include <bx/string.h>
 
+#include <bx/debug.h>
+
 class Bin2cWriter : public bx::WriterI
 {
 public:
@@ -15,6 +17,7 @@ public:
 		: m_mb(_allocator)
 		, m_mw(&m_mb)
 		, m_name(_name)
+		, m_outputAsCStr(false)
 	{
 	}
 
@@ -24,10 +27,88 @@ public:
 
 	virtual int32_t write(const void* _data, int32_t _size, bx::Error* _err) override
 	{
+		m_outputAsCStr = true;
+
+		const char* data = (const char*)_data;
+		for (int32_t ii = 0; ii < _size; ++ii)
+		{
+			char ch = data[ii];
+			if (!bx::isPrint(ch)
+			&&  !bx::isSpace(ch) )
+			{
+				m_outputAsCStr = false;
+				break;
+			}
+		}
+
 		return bx::write(&m_mw, _data, _size, _err);
 	}
 
-	void output(bx::WriterI* m_writer)
+	void output(bx::WriterI* _writer)
+	{
+		if (m_outputAsCStr)
+		{
+			outputString(_writer);
+		}
+		else
+		{
+			outputHex(_writer);
+		}
+	}
+
+	void outputString(bx::WriterI* _writer)
+	{
+		const char* data = (const char*)m_mb.more(0);
+		uint32_t size = uint32_t(bx::seek(&m_mw) );
+
+		bx::Error err;
+
+		bx::write(
+			  _writer
+			, &err
+			, "static const char* %.*s = /* Generated with bin2c. */\n\t\""
+			, m_name.getLength()
+			, m_name.getPtr()
+			);
+
+		if (NULL != data)
+		{
+			bool escaped = false;
+
+			for (uint32_t ii = 0; ii < size; ++ii)
+			{
+				char ch = data[ii];
+
+				if (!escaped)
+				{
+					switch (ch)
+					{
+					case '\"': bx::write(_writer, "\\\"",        &err); break;
+					case '\n': bx::write(_writer, "\\n\"\n\t\"", &err); break;
+					case '\r': bx::write(_writer, "\\r",         &err); break;
+					case '\\': escaped = true;                 BX_FALLTHROUGH;
+					default:   bx::write(_writer, ch, &err);            break;
+					}
+				}
+				else
+				{
+					switch (ch)
+					{
+					case '\n': bx::write(_writer, "\\\"\n\t\"", &err);  break;
+					case '\r':                                 BX_FALLTHROUGH;
+					case '\t': bx::write(_writer, "\\", &err); BX_FALLTHROUGH;
+					default  : bx::write(_writer, ch,   &err);          break;
+					}
+
+					escaped = false;
+				}
+			}
+		}
+
+		bx::write(_writer, &err, "\"\n\t;\n");
+	}
+
+	void outputHex(bx::WriterI* _writer)
 	{
 #define HEX_DUMP_WIDTH 16
 #define HEX_DUMP_SPACE_WIDTH 96
@@ -35,9 +116,12 @@ public:
 		const char* data = (const char*)m_mb.more(0);
 		uint32_t size = uint32_t(bx::seek(&m_mw) );
 
-		bx::writePrintf(
-			  m_writer
-			, "static const uint8_t %.*s[%d] =\n{\n"
+		bx::Error err;
+
+		bx::write(
+			  _writer
+			, &err
+			, "static const uint8_t %.*s[%d] = /* Generated with bin2c. */\n{\n"
 			, m_name.getLength()
 			, m_name.getPtr()
 			, size
@@ -60,7 +144,7 @@ public:
 				if (HEX_DUMP_WIDTH == asciiPos)
 				{
 					ascii[asciiPos] = '\0';
-					bx::writePrintf(m_writer, "\t" HEX_DUMP_FORMAT "// %s\n", hex, ascii);
+					bx::write(_writer, &err, "\t" HEX_DUMP_FORMAT "// %s\n", hex, ascii);
 					data += asciiPos;
 					hexPos   = 0;
 					asciiPos = 0;
@@ -70,11 +154,11 @@ public:
 			if (0 != asciiPos)
 			{
 				ascii[asciiPos] = '\0';
-				bx::writePrintf(m_writer, "\t" HEX_DUMP_FORMAT "// %s\n", hex, ascii);
+				bx::write(_writer, &err, "\t" HEX_DUMP_FORMAT "// %s\n", hex, ascii);
 			}
 		}
 
-		bx::writePrintf(m_writer, "};\n");
+		bx::write(_writer, &err, "};\n");
 #undef HEX_DUMP_WIDTH
 #undef HEX_DUMP_SPACE_WIDTH
 #undef HEX_DUMP_FORMAT
@@ -83,24 +167,26 @@ public:
 	bx::MemoryBlock  m_mb;
 	bx::MemoryWriter m_mw;
 	bx::StringView   m_name;
+	bool             m_outputAsCStr;
 };
 
 void help(const char* _error = NULL)
 {
 	bx::WriterI* stdOut = bx::getStdOut();
+	bx::Error err;
 
 	if (NULL != _error)
 	{
-		bx::writePrintf(stdOut, "Error:\n%s\n\n", _error);
+		bx::write(stdOut, &err, "Error:\n%s\n\n", _error);
 	}
 
-	bx::writePrintf(stdOut
+	bx::write(stdOut, &err
 		, "bin2c, binary to C\n"
-		  "Copyright 2011-2018 Branimir Karadzic. All rights reserved.\n"
+		  "Copyright 2011-2020 Branimir Karadzic. All rights reserved.\n"
 		  "License: https://github.com/bkaradzic/bx#license-bsd-2-clause\n\n"
 		);
 
-	bx::writePrintf(stdOut
+	bx::write(stdOut, &err
 		, "Usage: bin2c -f <in> -o <out> -n <name>\n"
 		  "\n"
 		  "Options:\n"

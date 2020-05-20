@@ -1,17 +1,13 @@
 /*
- * Copyright 2010-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2010-2020 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bx#license-bsd-2-clause
  */
 
 #include "bx_p.h"
 #include <bx/allocator.h>
+#include <bx/file.h>
 #include <bx/hash.h>
-#include <bx/readerwriter.h>
 #include <bx/string.h>
-
-#if !BX_CRT_NONE
-#	include <stdio.h> // vsnprintf
-#endif // !BX_CRT_NONE
 
 namespace bx
 {
@@ -192,7 +188,12 @@ namespace bx
 			}
 		}
 
-		return 0 == max && _lhsMax == _rhsMax ? 0 : fn(*_lhs) - fn(*_rhs);
+		if (0 == max)
+		{
+			return _lhsMax == _rhsMax ? 0 : _lhsMax > _rhsMax ? 1 : -1;
+		}
+
+		return fn(*_lhs) - fn(*_rhs);
 	}
 
 	int32_t strCmp(const StringView& _lhs, const StringView& _rhs, int32_t _max)
@@ -374,7 +375,7 @@ namespace bx
 
 	inline const char* strRFindUnsafe(const char* _str, int32_t _len, char _ch)
 	{
-		for (int32_t ii = _len; 0 <= ii; --ii)
+		for (int32_t ii = _len-1; 0 <= ii; --ii)
 		{
 			if (_str[ii] == _ch)
 			{
@@ -419,18 +420,9 @@ namespace bx
 				}
 			}
 
-			// Set pointers.
-			const char* string = ptr;
-			const char* search = _find;
-
-			// Start comparing.
-			while (fn(*string++) == fn(*search++) )
+			if (0 == strCmp<fn>(ptr, _findMax, _find, _findMax) )
 			{
-				// If end of the 'search' string is reached, all characters match.
-				if ('\0' == *search)
-				{
-					return ptr;
-				}
+				return ptr;
 			}
 		}
 
@@ -673,7 +665,7 @@ namespace bx
 		StringView ptr = strFind(_str, _word);
 		for (; !ptr.isEmpty(); ptr = strFind(StringView(ptr.getPtr() + len, _str.getTerm() ), _word) )
 		{
-			char ch = *(ptr.getPtr() - 1);
+			char ch = ptr.getPtr() != _str.getPtr() ? *(ptr.getPtr() - 1) : ' ';
 			if (isAlphaNum(ch) || '_' == ch)
 			{
 				continue;
@@ -691,9 +683,10 @@ namespace bx
 		return StringView(_str.getTerm(), _str.getTerm() );
 	}
 
-	StringView findIdentifierMatch(const StringView& _str, const char** _words)
+	StringView findIdentifierMatch(const StringView& _str, const char** _words, int32_t _num)
 	{
-		for (StringView word = *_words; !word.isEmpty(); ++_words, word = *_words)
+		int32_t ii = 0;
+		for (StringView word = *_words; ii < _num && !word.isEmpty(); ++ii, ++_words, word = *_words)
 		{
 			StringView match = findIdentifierMatch(_str, word);
 			if (!match.isEmpty() )
@@ -737,13 +730,40 @@ namespace bx
 		{
 			int32_t size = 0;
 			int32_t len = (int32_t)strLen(_str, _len);
-			int32_t padding = _param.width > len ? _param.width - len : 0;
-			bool sign = _param.sign && len > 1 && _str[0] != '-';
-			padding = padding > 0 ? padding - sign : 0;
+
+			if (_param.width > 0)
+			{
+				len = min(_param.width, len);
+			}
+
+			const bool hasMinus = (NULL != _str && '-' == _str[0]);
+			const bool hasSign = _param.sign || hasMinus;
+			char sign = hasSign ? hasMinus ? '-' : '+' : '\0';
+
+			const char* str = _str;
+			if (hasMinus)
+			{
+				str++;
+				len--;
+			}
+
+			int32_t padding = _param.width > len ? _param.width - len - hasSign: 0;
 
 			if (!_param.left)
 			{
-				size += writeRep(_writer, _param.fill, padding, _err);
+				if (' '  != _param.fill
+				&&  '\0' != sign)
+				{
+					size += write(_writer, sign, _err);
+					sign = '\0';
+				}
+
+				size += writeRep(_writer, _param.fill, max(0, padding), _err);
+			}
+
+			if ('\0' != sign)
+			{
+				size += write(_writer, sign, _err);
 			}
 
 			if (NULL == _str)
@@ -754,17 +774,12 @@ namespace bx
 			{
 				for (int32_t ii = 0; ii < len; ++ii)
 				{
-					size += write(_writer, toUpper(_str[ii]), _err);
+					size += write(_writer, toUpper(str[ii]), _err);
 				}
-			}
-			else if (sign)
-			{
-				size += write(_writer, '+', _err);
-				size += write(_writer, _str, len, _err);
 			}
 			else
 			{
-				size += write(_writer, _str, len, _err);
+				size += write(_writer, str, len, _err);
 			}
 
 			if (_param.left)
@@ -1124,12 +1139,11 @@ namespace bx
 		return total;
 	}
 
-	int32_t vsnprintfRef(char* _out, int32_t _max, const char* _format, va_list _argList)
+	int32_t vsnprintf(char* _out, int32_t _max, const char* _format, va_list _argList)
 	{
 		if (1 < _max)
 		{
-			StaticMemoryBlockWriter writer(_out, uint32_t(_max-1) );
-			_out[_max-1] = '\0';
+			StaticMemoryBlockWriter writer(_out, uint32_t(_max) );
 
 			Error err;
 			va_list argListCopy;
@@ -1142,39 +1156,19 @@ namespace bx
 				size += write(&writer, '\0', &err);
 				return size - 1 /* size without '\0' terminator */;
 			}
+			else
+			{
+				_out[_max-1] = '\0';
+			}
 		}
 
 		Error err;
 		SizerWriter sizer;
 		va_list argListCopy;
 		va_copy(argListCopy, _argList);
-		int32_t size = write(&sizer, _format, argListCopy, &err);
+		int32_t total = write(&sizer, _format, argListCopy, &err);
 		va_end(argListCopy);
 
-		return size;
-	}
-
-	int32_t vsnprintf(char* _out, int32_t _max, const char* _format, va_list _argList)
-	{
-		va_list argList;
-		va_copy(argList, _argList);
-		int32_t total = 0;
-#if BX_CRT_NONE
-		total = vsnprintfRef(_out, _max, _format, argList);
-#elif BX_CRT_MSVC
-		int32_t len = -1;
-		if (NULL != _out)
-		{
-			va_list argListCopy;
-			va_copy(argListCopy, _argList);
-			len = ::vsnprintf_s(_out, _max, size_t(-1), _format, argListCopy);
-			va_end(argListCopy);
-		}
-		total = -1 == len ? ::_vscprintf(_format, argList) : len;
-#else
-		total = ::vsnprintf(_out, _max, _format, argList);
-#endif // BX_COMPILER_MSVC
-		va_end(argList);
 		return total;
 	}
 
@@ -1184,6 +1178,28 @@ namespace bx
 		va_start(argList, _format);
 		int32_t total = vsnprintf(_out, _max, _format, argList);
 		va_end(argList);
+
+		return total;
+	}
+
+	int32_t vprintf(const char* _format, va_list _argList)
+	{
+		Error err;
+		va_list argListCopy;
+		va_copy(argListCopy, _argList);
+		int32_t total = write(getStdOut(), _format, argListCopy, &err);
+		va_end(argListCopy);
+
+		return total;
+	}
+
+	int32_t printf(const char* _format, ...)
+	{
+		va_list argList;
+		va_start(argList, _format);
+		int32_t total = vprintf(_format, argList);
+		va_end(argList);
+
 		return total;
 	}
 

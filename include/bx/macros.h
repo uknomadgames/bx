@@ -1,12 +1,14 @@
 /*
- * Copyright 2010-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2010-2020 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bx#license-bsd-2-clause
  */
 
+#ifndef BX_H_HEADER_GUARD
+#	error "Do not include macros.h directly #include <bx/bx.h> instead."
+#endif // BX_H_HEADER_GUARD
+
 #ifndef BX_MACROS_H_HEADER_GUARD
 #define BX_MACROS_H_HEADER_GUARD
-
-#include "bx.h"
 
 ///
 #if BX_COMPILER_MSVC
@@ -41,11 +43,6 @@
 #define BX_FILE_LINE_LITERAL "" __FILE__ "(" BX_STRINGIZE(__LINE__) "): "
 
 ///
-#define BX_ALIGN_MASK(_value, _mask) ( ( (_value)+(_mask) ) & ( (~0)&(~(_mask) ) ) )
-#define BX_ALIGN_16(_value) BX_ALIGN_MASK(_value, 0xf)
-#define BX_ALIGN_256(_value) BX_ALIGN_MASK(_value, 0xff)
-#define BX_ALIGN_4096(_value) BX_ALIGN_MASK(_value, 0xfff)
-
 #define BX_ALIGNOF(_type) __alignof(_type)
 
 #if defined(__has_feature)
@@ -112,6 +109,15 @@
 #	error "Unknown BX_COMPILER_?"
 #endif
 
+/// The return value of the function is solely a function of the arguments.
+///
+#if __cplusplus < 201402
+#	define BX_CONSTEXPR_FUNC BX_CONST_FUNC
+#else
+#	define BX_CONSTEXPR_FUNC constexpr BX_CONST_FUNC
+#endif // __cplusplus < 201402
+
+///
 #define BX_STATIC_ASSERT(_condition, ...) static_assert(_condition, "" __VA_ARGS__)
 
 ///
@@ -199,19 +205,19 @@
 
 ///
 #define BX_CLASS_NO_DEFAULT_CTOR(_class) \
-			private: _class()
+	private: _class()
 
 #define BX_CLASS_NO_COPY(_class) \
-			private: _class(const _class& _rhs)
+	private: _class(const _class& _rhs)
 
 #define BX_CLASS_NO_ASSIGNMENT(_class) \
-			private: _class& operator=(const _class& _rhs)
+	private: _class& operator=(const _class& _rhs)
 
-#define BX_CLASS_ALLOCATOR(_class) \
-			public: void* operator new(size_t _size); \
-			public: void  operator delete(void* _ptr); \
-			public: void* operator new[](size_t _size); \
-			public: void  operator delete[](void* _ptr)
+#define BX_CLASS_ALLOCATOR(_class)              \
+	public: void* operator new(size_t _size);   \
+	public: void  operator delete(void* _ptr);  \
+	public: void* operator new[](size_t _size); \
+	public: void  operator delete[](void* _ptr)
 
 #define BX_CLASS_1(_class, _a1) BX_CONCATENATE(BX_CLASS_, _a1)(_class)
 #define BX_CLASS_2(_class, _a1, _a2) BX_CLASS_1(_class, _a1); BX_CLASS_1(_class, _a2)
